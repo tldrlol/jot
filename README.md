@@ -1,0 +1,3 @@
+# Jot
+
+A text editor.
