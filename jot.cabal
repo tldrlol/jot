@@ -16,12 +16,13 @@ library
   hs-source-dirs:    src
   ghc-options:       -Wall
 
-  exposed-modules:   Jot.Rope
+  exposed-modules:   Jot.Buffer
+                   , Jot.History
+                   , Jot.Rope
 
   build-depends:     base >=4.9 && <4.10
                    , bytestring
                    , fingertree
-                   , utf8-string
 
 source-repository head
   type:              git

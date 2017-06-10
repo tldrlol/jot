@@ -3,34 +3,32 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 
 module Jot.Rope
-  ( Jot.Rope.JotString
-  , Jot.Rope.Range
-  , Jot.Rope.null
-  , Jot.Rope.length
-  , Jot.Rope.newLines
-  , Jot.Rope.singleton
-  , Jot.Rope.toLazyByteString
-  , Jot.Rope.append
-  , Jot.Rope.concat
-  , Jot.Rope.replicate
-  , Jot.Rope.splitAt
-  , Jot.Rope.splice
-  , Jot.Rope.reverse
+  ( JotString
+  , Range
+  , null
+  , length
+  , newLines
+  , singleton
+  , toLazyByteString
+  , empty
+  , append
+  , concat
+  , replicate
+  , splitAt
+  , splice
+  , reverse
   ) where
 
 import           Control.Arrow         ((&&&))
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy  as BL
-import qualified Data.ByteString.UTF8  as U
 import           Data.FingerTree       (FingerTree, Measured (..), ViewL (..), ViewR (..))
 import qualified Data.FingerTree       as T
 import           Data.Foldable         (foldl')
 import           Data.Function         (on)
 import           Data.Semigroup        (Semigroup (..))
-import           Data.String           (IsString (..))
-import           Prelude               hiding (concat, null, replicate, reverse,
-                                        splitAt)
+import           Prelude               hiding (concat, length, null, replicate, reverse, splitAt)
 
 -- |
 newtype JotString = JotString
@@ -82,7 +80,11 @@ toLazyByteString = foldMap (BL.fromStrict . fromChunk) . fromRope
 
 -- |
 nominalChunkSize :: Int
-nominalChunkSize = 1024
+nominalChunkSize = 512
+
+-- |
+empty :: JotString
+empty = JotString mempty
 
 -- |
 append :: JotString -> JotString -> JotString
@@ -91,11 +93,11 @@ append (JotString s) (JotString t) =
     (EmptyR, _) -> JotString t
     (_, EmptyL) -> JotString s
     (ss :> m1, m2 :< ts) ->
-      JotString $ ss `mappend` condense m1 m2 `mappend` ts
+      JotString $ ss `mappend` lump m1 m2 `mappend` ts
   where
-    condense c1 c2
-      | length' c1 + length' c2 <= nominalChunkSize = T.singleton (c1 <> c2)
-      | otherwise = T.singleton c1 `mappend` T.singleton c2
+    lump c1 c2
+      | ((+) `on` length') c1 c2 <= nominalChunkSize = T.singleton (c1 <> c2)
+      | otherwise = (mappend `on` T.singleton) c1 c2
 
 -- |
 concat :: Foldable t => t JotString -> JotString
@@ -136,29 +138,24 @@ reverse = JotString
         . T.unsafeFmap (JotChunk . BS.reverse . fromChunk)
         . fromRope
 
-instance Semigroup JotSize where
-  (JotSize l n) <> (JotSize l' n') = JotSize (l+l') (n+n')
-
 instance Monoid JotSize where
   mempty = JotSize 0 0
-  mappend = (<>)
+  mappend (JotSize l n) (JotSize l' n') = JotSize (l+l') (n+n')
+
+instance Semigroup JotSize
 
 instance Measured JotSize JotChunk where
   measure = (JotSize <$> BS.length <*> C.count '\n') . fromChunk
 
-instance IsString JotString where
-  fromString = singleton . U.fromString
-
 instance Measured JotSize JotString where
   measure = measure . fromRope
 
-instance Semigroup JotString where
-  (<>) = append
-
 instance Monoid JotString where
-  mempty  = JotString mempty
-  mappend = (<>)
+  mempty  = empty
+  mappend = append
   mconcat = concat
+
+instance Semigroup JotString
 
 instance Eq JotString where
   (==) = (==) `on` (length' &&& toLazyByteString)
