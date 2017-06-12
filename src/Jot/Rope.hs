@@ -4,7 +4,6 @@
 
 module Jot.Rope
   ( JotString
-  , Range
   , null
   , length
   , newLines
@@ -15,11 +14,13 @@ module Jot.Rope
   , concat
   , replicate
   , splitAt
-  , splice
+  , slice
+  , edit
   , reverse
   ) where
 
 import           Control.Arrow         ((&&&))
+import           Control.Monad         (guard)
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy  as BL
@@ -29,6 +30,8 @@ import           Data.Foldable         (foldl')
 import           Data.Function         (on)
 import           Data.Semigroup        (Semigroup (..))
 import           Prelude               hiding (concat, length, null, replicate, reverse, splitAt)
+
+import           Jot.Range
 
 -- |
 newtype JotString = JotString
@@ -45,12 +48,6 @@ data JotSize = JotSize
 newtype JotChunk = JotChunk
   { fromChunk :: BS.ByteString
   } deriving (Semigroup, Show)
-
--- |
-data Range = Range
-  {-# UNPACK #-} !Int
-  {-# UNPACK #-} !Int
-  deriving Show
 
 -- |
 null :: JotString -> Bool
@@ -113,23 +110,29 @@ replicate n s
     t = replicate (n `div` 2) s
 
 -- |
-splitAt :: Int -> JotString -> (JotString, JotString)
-splitAt n (JotString s)
-  | n <= 0 = (mempty, JotString s)
-  | otherwise =
-    let (l, r) = T.split ((> n) . len) s
-    in  case T.viewl r of
-      EmptyL           -> (JotString l, JotString r)
-      JotChunk x :< xs ->
-        let (m1, m2) = BS.splitAt (n - len (measure l)) x
-        in  (JotString l <> singleton m1, singleton m2 <> JotString xs)
+splitAt :: Int -> JotString -> Maybe (JotString, JotString)
+splitAt n (JotString s) = do
+  guard $ 0 <= n && n <= length' s
+  let (l, r) = T.split ((> n) . len) s
+  pure $ case T.viewl r of
+    EmptyL           -> (JotString l, JotString r)
+    JotChunk x :< xs ->
+      let (m1, m2) = BS.splitAt (n - len (measure l)) x
+      in  (JotString l <> singleton m1, singleton m2 <> JotString xs)
 
 -- |
-splice :: Range -> JotString -> JotString -> JotString
-splice (Range i j) t s = pr <> t <> sf
-  where
-    (pr, _) = splitAt i s
-    (_, sf) = splitAt j s
+slice :: Range -> JotString -> Maybe JotString
+slice (Range i j) s = do
+  (_, a) <- splitAt i     s
+  (b, _) <- splitAt (j-i) a
+  pure b
+
+-- |
+edit :: Range -> JotString -> JotString -> Maybe JotString
+edit (Range i j) t s = do
+  (pr, _) <- splitAt i s
+  (_, sf) <- splitAt j s
+  pure $ pr <> t <> sf
 
 -- |
 reverse :: JotString -> JotString
