@@ -16,8 +16,8 @@ library
   hs-source-dirs:    src
   ghc-options:       -Wall
 
-  exposed-modules:   Jot.File
-                   , Jot.Buffer
+  exposed-modules:   Jot.Buffer
+                   , Jot.Edit
                    , Jot.History
                    , Jot.Range
                    , Jot.Rope
@@ -26,7 +26,7 @@ library
                    , async
                    , bytestring
                    , fingertree
-                   , safe
+                   , lens
 
 source-repository head
   type:              git

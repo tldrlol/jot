@@ -1,95 +1,79 @@
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
 module Jot.History
   ( History
   , singleton
-  , view
+  , study
   , record
-  , up
-  , down
-  , right
-  , left
+  , undo
+  , redo
+  , focusNext
+  , focusPrev
   ) where
 
-import           Data.List (uncons)
-import           Data.List.NonEmpty (NonEmpty(..), (<|))
+import           Control.Lens
 import qualified Data.List.NonEmpty as NE
+import           Data.List.NonEmpty (NonEmpty(..))
+import           Data.Semigroup (Semigroup, (<>))
 
 -- |
 data Tree a = Tree
-  { content  :: a
-  , leading  :: {-# UNPACK #-} ![Tree a]
-  , trailing :: {-# UNPACK #-} ![Tree a]
-  } deriving (Eq, Foldable, Functor, Show)
+  { content   :: a
+  , _leading  :: [Tree a]
+  , _trailing :: [Tree a]
+  } deriving (Functor, Show)
+
+makeLenses ''Tree
+
+-- |
+newtype History a = History
+  { archives :: NonEmpty (Tree a)
+  } deriving (Functor, Semigroup, Show)
 
 -- |
 singletonTree :: a -> Tree a
 singletonTree a = Tree a [] []
 
 -- |
-push :: Tree a -> Tree a -> Tree a
-push a t = t { trailing = a : trailing t }
-
--- |
-pop :: Tree a -> Maybe (Tree a, Tree a)
-pop (Tree a l ts) = uncons ts >>= \(t',ts') -> pure (t', Tree a l ts')
-
--- |
-focusRight :: Tree a -> Maybe (Tree a)
-focusRight x = do
-  (t, ts) <-  uncons (trailing x)
-  pure $ x { leading = t : leading x, trailing = ts }
-
--- |
-focusLeft :: Tree a -> Maybe (Tree a)
-focusLeft x = do
-  (l, ls) <- uncons (leading x)
-  pure $ x { leading = ls, trailing = l : trailing x }
-
--- |
-newtype History a = History
-  { ancestry :: NonEmpty (Tree a)
-  } deriving (Eq, Foldable, Functor, Show)
-
--- |
 singleton :: a -> History a
 singleton = History . pure . singletonTree
 
 -- |
-view :: History a -> a
-view = content . NE.head . ancestry
+study :: History a -> a
+study = content . NE.head  . archives
 
 -- |
 record :: a -> History a -> History a
-record a h = h { ancestry = singletonTree a <| ancestry h }
+record = (<>) . singleton
 
 -- |
-up :: History a -> Maybe (History a)
-up h = do
-  (a, bs) <- sequenceA . NE.uncons . ancestry $ h
-  (b, cs) <- sequenceA . NE.uncons $ bs
-  pure $ History (push a b <| cs)
+undo :: History a -> Maybe (History a)
+undo (History (a :| b:ts)) = Just $ History $ (b & trailing %~ cons a) :| ts
+undo _                  = Nothing
 
 -- |
-down :: History a -> Maybe (History a)
-down h = do
-  (b, cs) <- sequenceA . NE.uncons . ancestry $ h
-  (a, b') <- pop b
-  pure $ History (a <| b' <| cs)
+redo :: History a -> Maybe (History a)
+redo (History (t :| ts)) = do
+  (c, cs) <- uncons (t ^. trailing)
+  Just $ History $ c :| (t & trailing .~ cs) : ts
 
 -- |
-modifyParent :: (Tree a -> Maybe (Tree a)) -> History a -> Maybe (History a)
-modifyParent f h = do
-  u       <- up h
-  (a, as) <- sequenceA . NE.uncons . ancestry $ u
-  a'      <- f a
-  down $ History (a' <| as)
+focus
+  :: Lens' (Tree a) [Tree a]
+  -> Lens' (Tree a) [Tree a]
+  -> History a
+  -> Maybe (History a)
+focus src dst (History (t :| ts)) = do
+  (c, cs) <- uncons (t ^. src)
+  Just $ History $ (t & src .~ cs & dst %~ cons c) :| ts
 
 -- |
-right :: History a -> Maybe (History a)
-right = modifyParent focusRight
+focusNext :: History a -> Maybe (History a)
+focusNext = focus trailing leading
 
 -- |
-left :: History a -> Maybe (History a)
-left = modifyParent focusLeft
+focusPrev :: History a -> Maybe (History a)
+focusPrev = focus leading trailing

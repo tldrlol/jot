@@ -1,19 +1,22 @@
 module Jot.Range
   ( Range(..)
-  , range
+  , size
+  , ofPoint
   ) where
 
 import Data.Semigroup ((<>))
 
 -- |
-data Range = Range
-  {-# UNPACK #-} !Int
-  {-# UNPACK #-} !Int
+data Range = Range Int Int
+  deriving Eq
 
 -- |
-range :: Int -> Int -> Range
-range a b | a <= b    = Range a b
-          | otherwise = Range b a
+size :: Range -> Int
+size (Range i j) = j - i
+
+-- |
+ofPoint :: Int -> Range
+ofPoint x = Range x x
 
 instance Show Range where
-  show (Range i j) = "[" <> show i <> ", " <> show j <> ")"
+  show (Range i j) = "[" <> show i <> "," <> show j <> ")"
