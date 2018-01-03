@@ -1,3 +1,3 @@
 # Jot
 
-A text editor.
+Not a text editor.
